@@ -18,127 +18,66 @@ from typing import Dict, Any, Optional
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Global variables for model and pipeline
-pipeline = None
-device = None
+# --- Configuration ---
+# The model path in the RunPod volume.
+# This should point to the correctly converted diffusers directory.
+MODEL_PATH = "/runpod-volume/PhotonicFusionSDXL_V3-diffusers-fixed"
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-def load_model():
-    """Load the PhotonicFusion SDXL model with intelligent path detection"""
-    global pipeline, device
-    
-    # Set device
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    logger.info(f"Using device: {device}")
-    
-    # Define potential model paths in order of preference
-    model_paths = [
-        "/runpod-volume/photonicfusion-sdxl",  # RunPod volume - primary
-        "Baileyy/photonicfusion-sdxl",  # Hugging Face Hub - fallback
-        "stabilityai/stable-diffusion-xl-base-1.0"  # Official SDXL - last resort
-    ]
-    
-    pipeline = None
-    last_error = None
-    
-    for i, model_path in enumerate(model_paths):
-        try:
-            logger.info(f"📁 Attempting to load model from: {model_path}")
-            
-            # For local paths, verify the correct diffusers structure
-            if model_path.startswith("/"):
-                if not os.path.exists(model_path):
-                    logger.warning(f"⚠️ Local path {model_path} does not exist, skipping...")
-                    continue
-                
-                # Check for diffusers model structure (not single model.safetensors)
-                required_components = {
-                    "model_index.json": os.path.join(model_path, "model_index.json"),
-                    "unet": os.path.join(model_path, "unet"),
-                    "vae": os.path.join(model_path, "vae"),
-                    "text_encoder": os.path.join(model_path, "text_encoder"),
-                    "text_encoder_2": os.path.join(model_path, "text_encoder_2"),
-                    "scheduler": os.path.join(model_path, "scheduler")
-                }
-                
-                missing_components = []
-                for component_name, component_path in required_components.items():
-                    if not os.path.exists(component_path):
-                        missing_components.append(component_name)
-                
-                if missing_components:
-                    logger.warning(f"⚠️ Missing required components in {model_path}: {missing_components}")
-                    continue
-                
-                # Check for either standard or fp16 model files in text encoders
-                text_encoder_standard = os.path.join(model_path, "text_encoder", "model.safetensors")
-                text_encoder_fp16 = os.path.join(model_path, "text_encoder", "model.fp16.safetensors")
-                text_encoder_2_standard = os.path.join(model_path, "text_encoder_2", "model.safetensors")
-                text_encoder_2_fp16 = os.path.join(model_path, "text_encoder_2", "model.fp16.safetensors")
-                
-                # Check if either standard or fp16 versions exist
-                if not (os.path.exists(text_encoder_standard) or os.path.exists(text_encoder_fp16)):
-                    logger.warning(f"⚠️ Missing text_encoder model files (both standard and fp16) in {model_path}")
-                    continue
-                    
-                if not (os.path.exists(text_encoder_2_standard) or os.path.exists(text_encoder_2_fp16)):
-                    logger.warning(f"⚠️ Missing text_encoder_2 model files (both standard and fp16) in {model_path}")
-                    continue
-                
-                # Log which version we found
-                te1_version = "fp16" if os.path.exists(text_encoder_fp16) else "standard"
-                te2_version = "fp16" if os.path.exists(text_encoder_2_fp16) else "standard"
-                logger.info(f"✅ Found text_encoder ({te1_version}) and text_encoder_2 ({te2_version}) in {model_path}")                
-                logger.info(f"✅ Verified complete diffusers model structure at {model_path}")
-            
-            # Load the pipeline with proper error handling
-            logger.info(f"🔄 Loading StableDiffusionXLPipeline from {model_path}...")
-            
-            pipeline = StableDiffusionXLPipeline.from_pretrained(
-                model_path,
-                torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-                use_safetensors=True,
-                variant="fp16" if device == "cuda" else None,
-                local_files_only=model_path.startswith("/")  # Only use local files for volume paths
-            )
-            
-            # Set scheduler
-            pipeline.scheduler = EulerDiscreteScheduler.from_config(pipeline.scheduler.config)
-            
-            # Move to device and optimize
-            pipeline = pipeline.to(device)
-            
-            if device == "cuda":
-                # Enable memory optimizations
-                pipeline.enable_attention_slicing()
-                pipeline.enable_model_cpu_offload()
-                
-                # Try to enable xformers if available
-                try:
-                    pipeline.enable_xformers_memory_efficient_attention()
-                    logger.info("✅ XFormers memory efficient attention enabled")
-                except Exception as e:
-                    logger.info(f"ℹ️ XFormers not available: {e}")
-            
-            logger.info(f"✅ Successfully loaded model from: {model_path}")
-            return pipeline
-            
-        except Exception as e:
-            last_error = e
-            logger.error(f"❌ Failed to load from {model_path}: {str(e)}")
-            
-            # Clean up any partially loaded model
-            if pipeline is not None:
-                del pipeline
-                pipeline = None
-            
-            # Clear CUDA cache if available
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            
-            continue
-    
-    # If we get here, all attempts failed
-    raise RuntimeError(f"❌ Failed to load model from all sources. Last error: {last_error}")
+# Global pipeline variable
+pipeline = None
+
+def load_model() -> StableDiffusionXLPipeline:
+    """
+    Loads the StableDiffusionXLPipeline from the fixed path on the RunPod volume.
+    """
+    global pipeline
+    if pipeline is not None:
+        logger.info("✅ Model pipeline already loaded.")
+        return pipeline
+
+    if not os.path.exists(MODEL_PATH):
+        logger.error(f"❌ Critical Error: Model not found at the specified volume path {MODEL_PATH}")
+        # Add a check for the old directory to guide the user
+        if os.path.exists("/runpod-volume/photonicfusion-sdxl"):
+            logger.error("👉 An old directory '/runpod-volume/photonicfusion-sdxl' was found.")
+            logger.error("👉 Please upload the new 'PhotonicFusionSDXL_V3-diffusers-fixed' directory and remove the old one.")
+        raise FileNotFoundError(f"Model directory not found at {MODEL_PATH}")
+
+    logger.info(f"🚀 Loading model from volume: {MODEL_PATH}")
+    logger.info(f"⚙️ Using device: {DEVICE}")
+
+    try:
+        loaded_pipeline = StableDiffusionXLPipeline.from_pretrained(
+            MODEL_PATH,
+            torch_dtype=torch.float16,
+            use_safetensors=True,
+            variant="fp16",
+            local_files_only=True
+        )
+        
+        loaded_pipeline.scheduler = EulerDiscreteScheduler.from_config(loaded_pipeline.scheduler.config)
+        loaded_pipeline.to(DEVICE)
+        
+        # Memory optimizations
+        if DEVICE == "cuda":
+            loaded_pipeline.enable_attention_slicing()
+            try:
+                loaded_pipeline.enable_xformers_memory_efficient_attention()
+                logger.info("✅ XFormers memory efficient attention enabled.")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not enable XFormers. Reason: {e}")
+
+        pipeline = loaded_pipeline
+        logger.info("✅ Model pipeline loaded successfully from volume.")
+        return pipeline
+
+    except Exception as e:
+        logger.exception(f"❌ Failed to load the model pipeline from volume. Error: {e}")
+        gc.collect()
+        if DEVICE == "cuda":
+            torch.cuda.empty_cache()
+        raise
 
 def generate_image(
     prompt: str,
@@ -164,7 +103,7 @@ def generate_image(
     # Set random seed if provided
     generator = None
     if seed is not None:
-        generator = torch.Generator(device=device).manual_seed(seed)
+        generator = torch.Generator(device=DEVICE).manual_seed(seed)
     
     # Generate image
     with torch.no_grad():
@@ -218,81 +157,78 @@ def generate_image(
 
 def handler(event: Dict[str, Any]) -> Dict[str, Any]:
     """
-    RunPod handler function
+    The main handler function for the RunPod serverless worker.
     """
+    global pipeline
+    
     try:
-        # Extract input parameters
-        input_data = event.get("input", {})
-        
-        # Required parameters
-        prompt = input_data.get("prompt")
-        if not prompt:
-            return {
-                "error": "Missing required parameter: prompt"
-            }
-        
-        # Optional parameters with defaults
-        negative_prompt = input_data.get("negative_prompt", "blurry, low quality, distorted, ugly")
-        width = input_data.get("width", 1024)
-        height = input_data.get("height", 1024)
-        num_inference_steps = input_data.get("num_inference_steps", 30)
-        guidance_scale = input_data.get("guidance_scale", 7.5)
-        num_images_per_prompt = input_data.get("num_images_per_prompt", 1)
-        seed = input_data.get("seed")
-        
-        # Validate parameters
-        width = max(512, min(width, 1536))  # Clamp to reasonable range
-        height = max(512, min(height, 1536))
-        num_inference_steps = max(10, min(num_inference_steps, 100))
-        guidance_scale = max(1.0, min(guidance_scale, 20.0))
-        num_images_per_prompt = max(1, min(num_images_per_prompt, 4))  # Limit to 4 images max
-        
-        print(f"Request parameters:")
-        print(f"  Prompt: {prompt}")
-        print(f"  Negative: {negative_prompt}")
-        print(f"  Size: {width}x{height}")
-        print(f"  Steps: {num_inference_steps}")
-        print(f"  Guidance: {guidance_scale}")
-        print(f"  Images: {num_images_per_prompt}")
-        print(f"  Seed: {seed}")
-        
-        # Generate images
-        images_base64 = generate_image(
-            prompt=prompt,
-            negative_prompt=negative_prompt,
-            width=width,
-            height=height,
-            num_inference_steps=num_inference_steps,
-            guidance_scale=guidance_scale,
-            num_images_per_prompt=num_images_per_prompt,
-            seed=seed
-        )
-        
-        return {
-            "images": images_base64,
-            "prompt": prompt,
-            "parameters": {
-                "width": width,
-                "height": height,
-                "num_inference_steps": num_inference_steps,
-                "guidance_scale": guidance_scale,
-                "num_images_per_prompt": num_images_per_prompt,
-                "seed": seed
-            }
-        }
-        
+        if pipeline is None:
+            load_model()
     except Exception as e:
-        print(f"❌ Error in handler: {str(e)}")
-        return {
-            "error": str(e)
-        }
+        logger.exception("❌ Model loading failed during handler initialization.")
+        return {"error": f"Failed to load model: {e}"}
 
+    job_input = event.get("input", {})
+    
+    # Input validation
+    prompt = job_input.get("prompt")
+    if not prompt:
+        return {"error": "A 'prompt' is required in the input."}
+
+    # Set generation parameters
+    params = {
+        "prompt": prompt,
+        "negative_prompt": job_input.get("negative_prompt"),
+        "width": job_input.get("width", 1024),
+        "height": job_input.get("height", 1024),
+        "num_inference_steps": job_input.get("num_inference_steps", 30),
+        "guidance_scale": job_input.get("guidance_scale", 7.5),
+        "seed": job_input.get("seed")
+    }
+    
+    logger.info(f"Processing job with params: {params}")
+    start_time = time.time()
+
+    generator = None
+    if params["seed"] is not None:
+        generator = torch.Generator(device=DEVICE).manual_seed(params["seed"])
+
+    # Image Generation
+    try:
+        with torch.no_grad():
+            images = pipeline(
+                prompt=params["prompt"],
+                negative_prompt=params["negative_prompt"],
+                width=params["width"],
+                height=params["height"],
+                num_inference_steps=params["num_inference_steps"],
+                guidance_scale=params["guidance_scale"],
+                generator=generator
+            ).images
+    
+    except Exception as e:
+        logger.exception(f"❌ Image generation failed. Error: {e}")
+        return {"error": f"An error occurred during image generation: {e}"}
+
+    # Process and Return Images
+    image_urls = []
+    for image in images:
+        buffered = BytesIO()
+        image.save(buffered, format="JPEG")
+        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        image_urls.append(f"data:image/jpeg;base64,{img_str}")
+
+    end_time = time.time()
+    logger.info(f"✅ Job completed in {end_time - start_time:.2f} seconds.")
+    
+    # Clean up memory
+    gc.collect()
+    if DEVICE == "cuda":
+        torch.cuda.empty_cache()
+
+    return {"images": image_urls}
+
+# RunPod Entrypoint
 if __name__ == "__main__":
-    # For local testing
-    print("Starting PhotonicFusion SDXL RunPod Handler...")
-    
-    # Load model once
-    load_model()
-    
-    # Start RunPod serverless
+    logger.info("🚀 Starting RunPod serverless worker...")
     runpod.serverless.start({"handler": handler}) 

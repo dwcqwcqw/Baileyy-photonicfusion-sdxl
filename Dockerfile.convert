@@ -1,0 +1,23 @@
+# This Dockerfile is for a one-time conversion process.
+# It is NOT the final deployment Dockerfile.
+# Its purpose is to create a clean environment to run the conversion script
+# and produce a corrected diffusers model directory.
+
+# Use the official PyTorch image with CUDA support
+FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+
+# Set working directory
+WORKDIR /app
+
+# Install dependencies required for the conversion script
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir protobuf==3.20.3
+
+# Copy the conversion script and the original model file
+COPY convert_sdxl_simple.py /app/
+COPY ./model/PhotonicFusionSDXL_V3.safetensors /app/model/
+
+# The main command of this Dockerfile: Run the conversion.
+# This will generate the /app/PhotonicFusionSDXL_V3-diffusers-fixed directory inside the container.
+CMD ["python", "/app/convert_sdxl_simple.py", "/app/model/PhotonicFusionSDXL_V3.safetensors", "/app/PhotonicFusionSDXL_V3-diffusers-fixed", "--fp16"] 
