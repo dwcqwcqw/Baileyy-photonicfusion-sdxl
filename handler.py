@@ -47,7 +47,6 @@ def load_model():
                 local_model_path,
                 torch_dtype=torch_dtype,
                 use_safetensors=True,
-                device_map="auto" if device == "cuda" else None,
                 local_files_only=True
             )
             print("✅ Model loaded from local volume")
@@ -56,14 +55,14 @@ def load_model():
             pipeline = StableDiffusionXLPipeline.from_pretrained(
                 hf_model_name,
                 torch_dtype=torch_dtype,
-                use_safetensors=True,
-                device_map="auto" if device == "cuda" else None
+                use_safetensors=True
             )
             print("✅ Model loaded from Hugging Face Hub")
         
-        # Move to device if not using device_map
-        if device == "cuda" and pipeline.device != torch.device("cuda"):
+        # Move to device
+        if device == "cuda":
             pipeline = pipeline.to(device)
+            print(f"✅ Pipeline moved to {device}")
         
         # Enable memory optimizations for GPU
         if device == "cuda":
@@ -93,10 +92,11 @@ def generate_image(
     height: int = 1024,
     num_inference_steps: int = 30,
     guidance_scale: float = 7.5,
+    num_images_per_prompt: int = 1,
     seed: Optional[int] = None
-) -> str:
+) -> list:
     """
-    Generate image and return base64 encoded string
+    Generate images and return list of base64 encoded strings
     """
     global pipeline
     
@@ -121,10 +121,11 @@ def generate_image(
                 height=height,
                 num_inference_steps=num_inference_steps,
                 guidance_scale=guidance_scale,
+                num_images_per_prompt=num_images_per_prompt,
                 generator=generator
             )
             
-            image = result.images[0]
+            images = result.images
             
         except torch.cuda.OutOfMemoryError:
             print("⚠️ CUDA OOM, trying with CPU offload")
@@ -140,21 +141,25 @@ def generate_image(
                 height=min(height, 768),
                 num_inference_steps=num_inference_steps,
                 guidance_scale=guidance_scale,
+                num_images_per_prompt=num_images_per_prompt,
                 generator=generator
             )
             
-            image = result.images[0]
+            images = result.images
     
     # Convert to base64
-    buffer = BytesIO()
-    image.save(buffer, format="PNG")
-    img_bytes = buffer.getvalue()
-    img_base64 = base64.b64encode(img_bytes).decode('utf-8')
+    images_base64 = []
+    for i, image in enumerate(images):
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        img_bytes = buffer.getvalue()
+        img_base64 = base64.b64encode(img_bytes).decode('utf-8')
+        images_base64.append(img_base64)
     
     generation_time = time.time() - start_time
-    print(f"✅ Image generated in {generation_time:.2f} seconds")
+    print(f"✅ {len(images)} image(s) generated in {generation_time:.2f} seconds")
     
-    return img_base64
+    return images_base64
 
 def handler(event: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -177,6 +182,7 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
         height = input_data.get("height", 1024)
         num_inference_steps = input_data.get("num_inference_steps", 30)
         guidance_scale = input_data.get("guidance_scale", 7.5)
+        num_images_per_prompt = input_data.get("num_images_per_prompt", 1)
         seed = input_data.get("seed")
         
         # Validate parameters
@@ -184,6 +190,7 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
         height = max(512, min(height, 1536))
         num_inference_steps = max(10, min(num_inference_steps, 100))
         guidance_scale = max(1.0, min(guidance_scale, 20.0))
+        num_images_per_prompt = max(1, min(num_images_per_prompt, 4))  # Limit to 4 images max
         
         print(f"Request parameters:")
         print(f"  Prompt: {prompt}")
@@ -191,27 +198,30 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
         print(f"  Size: {width}x{height}")
         print(f"  Steps: {num_inference_steps}")
         print(f"  Guidance: {guidance_scale}")
+        print(f"  Images: {num_images_per_prompt}")
         print(f"  Seed: {seed}")
         
-        # Generate image
-        image_base64 = generate_image(
+        # Generate images
+        images_base64 = generate_image(
             prompt=prompt,
             negative_prompt=negative_prompt,
             width=width,
             height=height,
             num_inference_steps=num_inference_steps,
             guidance_scale=guidance_scale,
+            num_images_per_prompt=num_images_per_prompt,
             seed=seed
         )
         
         return {
-            "image": image_base64,
+            "images": images_base64,
             "prompt": prompt,
             "parameters": {
                 "width": width,
                 "height": height,
                 "num_inference_steps": num_inference_steps,
                 "guidance_scale": guidance_scale,
+                "num_images_per_prompt": num_images_per_prompt,
                 "seed": seed
             }
         }
