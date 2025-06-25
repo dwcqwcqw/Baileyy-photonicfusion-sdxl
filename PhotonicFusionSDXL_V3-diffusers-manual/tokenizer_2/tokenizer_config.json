@@ -1,0 +1,11 @@
+{
+  "add_prefix_space": true,
+  "bos_token": "<|startoftext|>",
+  "clean_up_tokenization_spaces": true,
+  "eos_token": "<|endoftext|>",
+  "model_max_length": 77,
+  "pad_token": "<|endoftext|>",
+  "padding_side": "right",
+  "tokenizer_class": "CLIPTokenizer",
+  "unk_token": "<unk>"
+} 

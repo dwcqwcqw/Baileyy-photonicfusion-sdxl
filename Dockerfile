@@ -17,10 +17,27 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Ensure protobuf is installed correctly
 RUN pip install --no-cache-dir protobuf==3.20.3
 
-# Copy application code
+# --- Model Conversion Step ---
+# Copy the model and the conversion script into the image
+COPY ./model/PhotonicFusionSDXL_V3.safetensors /app/model/
+COPY convert_sdxl_simple.py /app/
+
+# Run the conversion script to create the diffusers-compatible model directory
+# This step uses the pre-installed dependencies in the container to avoid local environment issues.
+# The converted model will be baked directly into the Docker image.
+RUN python /app/convert_sdxl_simple.py \
+    /app/model/PhotonicFusionSDXL_V3.safetensors \
+    /app/PhotonicFusionSDXL_V3-diffusers-fixed \
+    --fp16
+
+# Clean up the original large model file to reduce image size
+RUN rm /app/model/PhotonicFusionSDXL_V3.safetensors
+RUN rm /app/convert_sdxl_simple.py
+
+# Copy the rest of the application code
 COPY . .
 
-# Create volume mount point for model files
+# Create volume mount point for model files (still useful for other potential files)
 RUN mkdir -p /runpod-volume
 
 # Set environment variables
