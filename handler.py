@@ -261,6 +261,92 @@ def fix_meta_tensors(model):
     _fix_module(model)
     return model
 
+def fix_config_none_values():
+    """修复配置文件中的 None 值"""
+    import json
+    
+    logger.info("🔧 检查并修复配置文件中的 None 值...")
+    
+    # 修复 scheduler 配置
+    scheduler_config_path = os.path.join(MODEL_PATH, "scheduler", "scheduler_config.json")
+    if os.path.exists(scheduler_config_path):
+        try:
+            with open(scheduler_config_path, 'r') as f:
+                config = json.load(f)
+            
+            # 检查关键参数
+            critical_params = {
+                "num_train_timesteps": 1000,
+                "beta_start": 0.00085,
+                "beta_end": 0.012,
+                "beta_schedule": "scaled_linear",
+                "prediction_type": "epsilon",
+                "clip_sample": False,
+                "set_alpha_to_one": False,
+                "steps_offset": 1,
+                "timestep_spacing": "leading",
+                "skip_prk_steps": True,
+                "use_karras_sigmas": False,
+                "sample_max_value": 1.0
+            }
+            
+            fixes_applied = []
+            for key, default_value in critical_params.items():
+                if key not in config or config[key] is None:
+                    config[key] = default_value
+                    fixes_applied.append(key)
+            
+            if fixes_applied:
+                with open(scheduler_config_path, 'w') as f:
+                    json.dump(config, f, indent=2)
+                logger.info(f"✅ 修复 scheduler 配置: {fixes_applied}")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ 修复 scheduler 配置失败: {e}")
+    
+    # 修复其他组件配置中的关键 None 值
+    for component in ["unet", "vae"]:
+        config_path = os.path.join(MODEL_PATH, component, "config.json")
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                
+                fixes_applied = []
+                
+                # 检查基本参数
+                if component == "unet":
+                    critical_params = {
+                        "sample_size": 128,
+                        "in_channels": 4,
+                        "out_channels": 4,
+                        "layers_per_block": 2,
+                        "norm_num_groups": 32
+                    }
+                elif component == "vae":
+                    critical_params = {
+                        "in_channels": 3,
+                        "out_channels": 3,
+                        "down_block_types": ["DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D"],
+                        "up_block_types": ["UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"],
+                        "block_out_channels": [128, 256, 512, 512],
+                        "latent_channels": 4,
+                        "layers_per_block": 2
+                    }
+                
+                for key, default_value in critical_params.items():
+                    if key in config and config[key] is None:
+                        config[key] = default_value
+                        fixes_applied.append(key)
+                
+                if fixes_applied:
+                    with open(config_path, 'w') as f:
+                        json.dump(config, f, indent=2)
+                    logger.info(f"✅ 修复 {component} 配置: {fixes_applied}")
+                    
+            except Exception as e:
+                logger.warning(f"⚠️ 修复 {component} 配置失败: {e}")
+
 def load_model():
     """Load the PhotonicFusion SDXL model from RunPod volume"""
     global pipeline
@@ -268,7 +354,10 @@ def load_model():
     logger.info(f"Using device: {DEVICE}")
     logger.info(f"📁 Loading model from: {MODEL_PATH}")
     
-    # 首先诊断并修复模型结构
+    # 首先修复配置文件中的 None 值
+    fix_config_none_values()
+    
+    # 然后诊断并修复模型结构
     if not diagnose_volume_structure():
         raise RuntimeError(f"❌ Volume模型结构检查失败")
     
@@ -550,22 +639,49 @@ def generate_image(prompt, negative_prompt="", num_inference_steps=20, guidance_
     
     logger.info(f"🎨 Generating image with prompt: {prompt[:50]}...")
     
+    # 验证和修复参数
+    if num_inference_steps is None or num_inference_steps <= 0:
+        num_inference_steps = 20
+        logger.warning(f"⚠️ 修复 num_inference_steps: {num_inference_steps}")
+    
+    if guidance_scale is None or guidance_scale <= 0:
+        guidance_scale = 7.0
+        logger.warning(f"⚠️ 修复 guidance_scale: {guidance_scale}")
+    
+    if width is None or width <= 0:
+        width = 1024
+        logger.warning(f"⚠️ 修复 width: {width}")
+    
+    if height is None or height <= 0:
+        height = 1024
+        logger.warning(f"⚠️ 修复 height: {height}")
+    
+    # 确保尺寸是 8 的倍数（SDXL 要求）
+    width = (width // 8) * 8
+    height = (height // 8) * 8
+    
     # Set seed for reproducibility
     if seed is not None:
-        generator = torch.Generator(device=DEVICE).manual_seed(seed)
+        try:
+            generator = torch.Generator(device=DEVICE).manual_seed(int(seed))
+        except (ValueError, TypeError):
+            logger.warning(f"⚠️ 无效的 seed 值: {seed}，使用随机种子")
+            generator = None
     else:
         generator = None
+    
+    logger.info(f"📊 参数: steps={num_inference_steps}, guidance={guidance_scale}, size={width}x{height}")
     
     try:
         # Generate image
         with torch.no_grad():
             result = pipeline(
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                num_inference_steps=num_inference_steps,
-                guidance_scale=guidance_scale,
-                width=width,
-                height=height,
+                prompt=str(prompt) if prompt is not None else "",
+                negative_prompt=str(negative_prompt) if negative_prompt is not None else "",
+                num_inference_steps=int(num_inference_steps),
+                guidance_scale=float(guidance_scale),
+                width=int(width),
+                height=int(height),
                 generator=generator
             )
         
