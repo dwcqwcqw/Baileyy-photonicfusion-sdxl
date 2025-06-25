@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # --- Configuration ---
 # The model path in the RunPod volume.
 # This should point to the correctly converted diffusers directory.
-MODEL_PATH = "/runpod-volume/PhotonicFusionSDXL_V3-diffusers-fixed"
+MODEL_PATH = "/runpod-volume/photonicfusion-sdxl"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 # Global pipeline variable
@@ -41,7 +41,7 @@ def load_model() -> StableDiffusionXLPipeline:
         # Add a check for the old directory to guide the user
         if os.path.exists("/runpod-volume/photonicfusion-sdxl"):
             logger.error("👉 An old directory '/runpod-volume/photonicfusion-sdxl' was found.")
-            logger.error("👉 Please upload the new 'PhotonicFusionSDXL_V3-diffusers-fixed' directory and remove the old one.")
+            logger.error("👉 Please upload the new 'photonicfusion-sdxl' directory and remove the old one.")
         raise FileNotFoundError(f"Model directory not found at {MODEL_PATH}")
 
     logger.info(f"🚀 Loading model from volume: {MODEL_PATH}")
