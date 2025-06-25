@@ -32,4 +32,4 @@ ENV CUDA_VISIBLE_DEVICES=0
 EXPOSE 8000
 
 # Run the handler
-CMD ["python", "handler.py"] 
+CMD ["python", "-u", "handler.py"] 

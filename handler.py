@@ -4,112 +4,134 @@ RunPod Serverless Handler for PhotonicFusion SDXL
 
 import runpod
 import torch
-from diffusers import StableDiffusionXLPipeline
+from diffusers import StableDiffusionXLPipeline, EulerDiscreteScheduler
 import base64
 from io import BytesIO
+from PIL import Image
 import os
+import gc
+import logging
 import time
 from typing import Dict, Any, Optional
 
-# Global variables for model caching
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Global variables for model and pipeline
 pipeline = None
 device = None
 
 def load_model():
-    """Load the PhotonicFusion SDXL model"""
+    """Load the PhotonicFusion SDXL model with intelligent path detection"""
     global pipeline, device
     
-    if pipeline is not None:
-        return pipeline
+    # Set device
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    logger.info(f"Using device: {device}")
     
-    print("Loading PhotonicFusion SDXL model...")
-    start_time = time.time()
+    # Define potential model paths in order of preference
+    model_paths = [
+        "/runpod-volume/photonicfusion-sdxl",  # RunPod volume - primary
+        "Baileyy/photonicfusion-sdxl",  # Hugging Face Hub - fallback
+        "stabilityai/stable-diffusion-xl-base-1.0"  # Official SDXL - last resort
+    ]
     
-    # Determine device
-    if torch.cuda.is_available():
-        device = "cuda"
-        torch_dtype = torch.float16
-    else:
-        device = "cpu"
-        torch_dtype = torch.float32
+    pipeline = None
+    last_error = None
     
-    print(f"Using device: {device}")
-    
-    # Define model paths (local volume path first, then fallback to HF Hub)
-    local_model_path = "/runpod-volume/photonicfusion-sdxl"
-    hf_model_name = "Baileyy/photonicfusion-sdxl"
-    
-    try:
-        # Try loading from local volume first
+    for i, model_path in enumerate(model_paths):
         try:
-            if os.path.exists(local_model_path):
-                print(f"📁 Loading model from local volume: {local_model_path}")
-                
-                # Check if tokenizer files exist
-                tokenizer_files_exist = os.path.exists(os.path.join(local_model_path, "tokenizer"))
-                
-                pipeline = StableDiffusionXLPipeline.from_pretrained(
-                    local_model_path,
-                    torch_dtype=torch_dtype,
-                    use_safetensors=True,
-                    local_files_only=True,
-                    low_cpu_mem_usage=True,
-                    # Skip missing files
-                    ignore_mismatched_sizes=True
-                )
-                print("✅ Model loaded from local volume")
-            else:
-                print(f"📦 Local volume not found, loading from Hugging Face Hub: {hf_model_name}")
-                pipeline = StableDiffusionXLPipeline.from_pretrained(
-                    hf_model_name,
-                    torch_dtype=torch_dtype,
-                    use_safetensors=True,
-                    low_cpu_mem_usage=True
-                )
-                print("✅ Model loaded from Hugging Face Hub")
-        except Exception as e:
-            print(f"❌ Error loading model from primary source: {str(e)}")
-            print("⚠️ Attempting to load from Hugging Face Hub as fallback...")
+            logger.info(f"📁 Attempting to load model from: {model_path}")
             
-            # Fallback to official SDXL model if custom model fails
-            try:
-                print("📦 Loading official SDXL model as fallback")
-                pipeline = StableDiffusionXLPipeline.from_pretrained(
-                    "stabilityai/stable-diffusion-xl-base-1.0",
-                    torch_dtype=torch_dtype,
-                    use_safetensors=True,
-                    variant="fp16"
-                )
-                print("✅ Fallback model loaded successfully")
-            except Exception as fallback_error:
-                print(f"❌ Fallback also failed: {str(fallback_error)}")
-                raise fallback_error
-        
-        # Move to device
-        if device == "cuda":
+            # For local paths, verify the correct diffusers structure
+            if model_path.startswith("/"):
+                if not os.path.exists(model_path):
+                    logger.warning(f"⚠️ Local path {model_path} does not exist, skipping...")
+                    continue
+                
+                # Check for diffusers model structure (not single model.safetensors)
+                required_components = {
+                    "model_index.json": os.path.join(model_path, "model_index.json"),
+                    "unet": os.path.join(model_path, "unet"),
+                    "vae": os.path.join(model_path, "vae"),
+                    "text_encoder": os.path.join(model_path, "text_encoder"),
+                    "text_encoder_2": os.path.join(model_path, "text_encoder_2"),
+                    "scheduler": os.path.join(model_path, "scheduler")
+                }
+                
+                missing_components = []
+                for component_name, component_path in required_components.items():
+                    if not os.path.exists(component_path):
+                        missing_components.append(component_name)
+                
+                if missing_components:
+                    logger.warning(f"⚠️ Missing required components in {model_path}: {missing_components}")
+                    continue
+                
+                # Additional check for model.safetensors in text encoders
+                text_encoder_model = os.path.join(model_path, "text_encoder", "model.safetensors")
+                text_encoder_2_model = os.path.join(model_path, "text_encoder_2", "model.safetensors")
+                
+                if not os.path.exists(text_encoder_model):
+                    logger.warning(f"⚠️ Missing text_encoder model.safetensors in {model_path}")
+                    continue
+                    
+                if not os.path.exists(text_encoder_2_model):
+                    logger.warning(f"⚠️ Missing text_encoder_2 model.safetensors in {model_path}")
+                    continue
+                
+                logger.info(f"✅ Verified complete diffusers model structure at {model_path}")
+            
+            # Load the pipeline with proper error handling
+            logger.info(f"🔄 Loading StableDiffusionXLPipeline from {model_path}...")
+            
+            pipeline = StableDiffusionXLPipeline.from_pretrained(
+                model_path,
+                torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+                use_safetensors=True,
+                variant="fp16" if device == "cuda" else None,
+                local_files_only=model_path.startswith("/")  # Only use local files for volume paths
+            )
+            
+            # Set scheduler
+            pipeline.scheduler = EulerDiscreteScheduler.from_config(pipeline.scheduler.config)
+            
+            # Move to device and optimize
             pipeline = pipeline.to(device)
-            print(f"✅ Pipeline moved to {device}")
-        
-        # Enable memory optimizations for GPU
-        if device == "cuda":
-            pipeline.enable_attention_slicing()
-            pipeline.enable_model_cpu_offload()
             
-            # Try to enable xformers if available
-            try:
-                pipeline.enable_xformers_memory_efficient_attention()
-                print("✅ XFormers enabled")
-            except ImportError:
-                print("⚠️ XFormers not available, using default attention")
-        
-        load_time = time.time() - start_time
-        print(f"✅ Model loaded successfully in {load_time:.2f} seconds")
-        
-        return pipeline
-        
-    except Exception as e:
-        print(f"❌ Error loading model: {str(e)}")
-        raise e
+            if device == "cuda":
+                # Enable memory optimizations
+                pipeline.enable_attention_slicing()
+                pipeline.enable_model_cpu_offload()
+                
+                # Try to enable xformers if available
+                try:
+                    pipeline.enable_xformers_memory_efficient_attention()
+                    logger.info("✅ XFormers memory efficient attention enabled")
+                except Exception as e:
+                    logger.info(f"ℹ️ XFormers not available: {e}")
+            
+            logger.info(f"✅ Successfully loaded model from: {model_path}")
+            return pipeline
+            
+        except Exception as e:
+            last_error = e
+            logger.error(f"❌ Failed to load from {model_path}: {str(e)}")
+            
+            # Clean up any partially loaded model
+            if pipeline is not None:
+                del pipeline
+                pipeline = None
+            
+            # Clear CUDA cache if available
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+            continue
+    
+    # If we get here, all attempts failed
+    raise RuntimeError(f"❌ Failed to load model from all sources. Last error: {last_error}")
 
 def generate_image(
     prompt: str,

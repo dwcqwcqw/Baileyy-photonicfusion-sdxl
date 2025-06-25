@@ -15,10 +15,12 @@
     "count": 1,
     "type": "NVIDIA_RTX_A4000"
   },
-  "volume": {
-    "name": "photonicfusion-models",
-    "mount_path": "/runpod-volume"
-  },
+  "volume_mounts": [
+    {
+      "name": "photonicfusion-models",
+      "mount_path": "/runpod-volume"
+    }
+  ],
   "container_disk_in_gb": 20,
   "min_workers": 0,
   "max_workers": 3,
