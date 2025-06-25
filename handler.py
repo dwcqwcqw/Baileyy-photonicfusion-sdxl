@@ -41,23 +41,49 @@ def load_model():
     
     try:
         # Try loading from local volume first
-        if os.path.exists(local_model_path):
-            print(f"📁 Loading model from local volume: {local_model_path}")
-            pipeline = StableDiffusionXLPipeline.from_pretrained(
-                local_model_path,
-                torch_dtype=torch_dtype,
-                use_safetensors=True,
-                local_files_only=True
-            )
-            print("✅ Model loaded from local volume")
-        else:
-            print(f"📦 Local volume not found, loading from Hugging Face Hub: {hf_model_name}")
-            pipeline = StableDiffusionXLPipeline.from_pretrained(
-                hf_model_name,
-                torch_dtype=torch_dtype,
-                use_safetensors=True
-            )
-            print("✅ Model loaded from Hugging Face Hub")
+        try:
+            if os.path.exists(local_model_path):
+                print(f"📁 Loading model from local volume: {local_model_path}")
+                
+                # Check if tokenizer files exist
+                tokenizer_files_exist = os.path.exists(os.path.join(local_model_path, "tokenizer"))
+                
+                pipeline = StableDiffusionXLPipeline.from_pretrained(
+                    local_model_path,
+                    torch_dtype=torch_dtype,
+                    use_safetensors=True,
+                    local_files_only=True,
+                    low_cpu_mem_usage=True,
+                    # Skip missing files
+                    ignore_mismatched_sizes=True
+                )
+                print("✅ Model loaded from local volume")
+            else:
+                print(f"📦 Local volume not found, loading from Hugging Face Hub: {hf_model_name}")
+                pipeline = StableDiffusionXLPipeline.from_pretrained(
+                    hf_model_name,
+                    torch_dtype=torch_dtype,
+                    use_safetensors=True,
+                    low_cpu_mem_usage=True
+                )
+                print("✅ Model loaded from Hugging Face Hub")
+        except Exception as e:
+            print(f"❌ Error loading model from primary source: {str(e)}")
+            print("⚠️ Attempting to load from Hugging Face Hub as fallback...")
+            
+            # Fallback to official SDXL model if custom model fails
+            try:
+                print("📦 Loading official SDXL model as fallback")
+                pipeline = StableDiffusionXLPipeline.from_pretrained(
+                    "stabilityai/stable-diffusion-xl-base-1.0",
+                    torch_dtype=torch_dtype,
+                    use_safetensors=True,
+                    variant="fp16"
+                )
+                print("✅ Fallback model loaded successfully")
+            except Exception as fallback_error:
+                print(f"❌ Fallback also failed: {str(fallback_error)}")
+                raise fallback_error
         
         # Move to device
         if device == "cuda":

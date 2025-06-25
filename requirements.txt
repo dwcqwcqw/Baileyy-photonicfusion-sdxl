@@ -16,6 +16,7 @@ Pillow>=9.0.0
 numpy
 requests
 huggingface-hub>=0.16.0
+protobuf>=3.20.0
 
 # Optional performance improvements
 xformers  # For memory-efficient attention (optional)

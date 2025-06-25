@@ -1,0 +1,12 @@
+{
+  "input": {
+    "prompt": "a beautiful landscape with mountains and lake, high quality, detailed, photorealistic",
+    "negative_prompt": "blurry, low quality, distorted, ugly, bad anatomy",
+    "width": 1024,
+    "height": 1024,
+    "num_inference_steps": 30,
+    "guidance_scale": 7.5,
+    "num_images_per_prompt": 1,
+    "seed": 42
+  }
+} 
