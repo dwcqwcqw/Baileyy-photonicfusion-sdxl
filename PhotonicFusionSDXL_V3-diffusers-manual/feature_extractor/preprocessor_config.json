@@ -1,8 +1,0 @@
-{
-  "do_normalize": true,
-  "do_resize": true,
-  "image_mean": [0.48145466, 0.45786028, 0.40821073],
-  "image_std": [0.26862954, 0.26130258, 0.27577711],
-  "resample": 3,
-  "size": 224
-} 
