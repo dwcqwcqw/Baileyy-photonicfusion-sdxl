@@ -1,0 +1,26 @@
+# Core dependencies
+torch>=2.0.0
+torchvision
+diffusers>=0.34.0
+transformers>=4.50.0
+accelerate>=0.20.0
+safetensors>=0.3.1
+
+# RunPod
+runpod>=1.6.0
+
+# Image processing
+Pillow>=9.0.0
+
+# Utilities
+numpy
+requests
+huggingface-hub>=0.16.0
+
+# Optional performance improvements
+xformers  # For memory-efficient attention (optional)
+
+# Development dependencies (optional)
+pytest
+black
+flake8 

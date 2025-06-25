@@ -1,0 +1,27 @@
+{
+  "name": "photonicfusion-sdxl",
+  "description": "PhotonicFusion SDXL image generation using diffusers",
+  "image": "photonicfusion-sdxl:latest",
+  "env": {
+    "MODEL_NAME": "Baileyy/photonicfusion-sdxl",
+    "TORCH_CUDA_ARCH_LIST": "6.0 6.1 7.0 7.5 8.0 8.6+PTX",
+    "PYTHONPATH": "/app"
+  },
+  "ports": {
+    "8000/tcp": {}
+  },
+  "gpu": {
+    "count": 1,
+    "type": "NVIDIA_RTX_A4000"
+  },
+  "volume": {
+    "name": "model-cache",
+    "mount_path": "/root/.cache"
+  },
+  "container_disk_in_gb": 50,
+  "min_workers": 0,
+  "max_workers": 3,
+  "idle_timeout": 5,
+  "max_concurrency_per_worker": 1,
+  "flashboot": true
+} 

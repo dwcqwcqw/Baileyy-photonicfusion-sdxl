@@ -1,0 +1,91 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# MacOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Model cache
+.cache/
+*.bin
+*.safetensors
+models/
+
+# Generated images
+*.png
+*.jpg
+*.jpeg
+test_*.png
+api_*.png
+output_*.png
+
+# Logs
+*.log
+logs/
+
+# Environment variables
+.env.local
+.env.production
+
+# Docker
+.dockerignore
+
+# RunPod specific
+runpod_secrets.json
+endpoint_config.json
+
+# Test outputs
+test_basic.png
+test_portrait.png
+test_landscape.png
+test_digital_art.png
+test_small.png
+api_basic_example.png
+api_portrait_example.png
+api_landscape_example.png
+api_digital_art_example.png
+api_batch_*.png
+huggingface_test*.png
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp 
