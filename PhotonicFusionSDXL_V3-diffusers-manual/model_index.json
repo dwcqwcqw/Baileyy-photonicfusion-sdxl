@@ -1,14 +1,6 @@
 {
   "_class_name": "StableDiffusionXLPipeline",
   "_diffusers_version": "0.34.0",
-  "feature_extractor": [
-    "transformers",
-    "CLIPImageProcessor"
-  ],
-  "image_encoder": [
-    "transformers",
-    "CLIPVisionModelWithProjection"
-  ],
   "scheduler": [
     "diffusers",
     "EulerDiscreteScheduler"
