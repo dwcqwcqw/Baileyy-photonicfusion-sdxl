@@ -69,18 +69,25 @@ def load_model():
                     logger.warning(f"⚠️ Missing required components in {model_path}: {missing_components}")
                     continue
                 
-                # Additional check for model.safetensors in text encoders
-                text_encoder_model = os.path.join(model_path, "text_encoder", "model.safetensors")
-                text_encoder_2_model = os.path.join(model_path, "text_encoder_2", "model.safetensors")
+                # Check for either standard or fp16 model files in text encoders
+                text_encoder_standard = os.path.join(model_path, "text_encoder", "model.safetensors")
+                text_encoder_fp16 = os.path.join(model_path, "text_encoder", "model.fp16.safetensors")
+                text_encoder_2_standard = os.path.join(model_path, "text_encoder_2", "model.safetensors")
+                text_encoder_2_fp16 = os.path.join(model_path, "text_encoder_2", "model.fp16.safetensors")
                 
-                if not os.path.exists(text_encoder_model):
-                    logger.warning(f"⚠️ Missing text_encoder model.safetensors in {model_path}")
+                # Check if either standard or fp16 versions exist
+                if not (os.path.exists(text_encoder_standard) or os.path.exists(text_encoder_fp16)):
+                    logger.warning(f"⚠️ Missing text_encoder model files (both standard and fp16) in {model_path}")
                     continue
                     
-                if not os.path.exists(text_encoder_2_model):
-                    logger.warning(f"⚠️ Missing text_encoder_2 model.safetensors in {model_path}")
+                if not (os.path.exists(text_encoder_2_standard) or os.path.exists(text_encoder_2_fp16)):
+                    logger.warning(f"⚠️ Missing text_encoder_2 model files (both standard and fp16) in {model_path}")
                     continue
                 
+                # Log which version we found
+                te1_version = "fp16" if os.path.exists(text_encoder_fp16) else "standard"
+                te2_version = "fp16" if os.path.exists(text_encoder_2_fp16) else "standard"
+                logger.info(f"✅ Found text_encoder ({te1_version}) and text_encoder_2 ({te2_version}) in {model_path}")                
                 logger.info(f"✅ Verified complete diffusers model structure at {model_path}")
             
             # Load the pipeline with proper error handling
