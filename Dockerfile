@@ -15,17 +15,11 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pre-download the model to speed up cold starts
-RUN python -c "\
-from diffusers import StableDiffusionXLPipeline; \
-import torch; \
-print('Pre-downloading PhotonicFusion SDXL model...'); \
-pipeline = StableDiffusionXLPipeline.from_pretrained('Baileyy/photonicfusion-sdxl', torch_dtype=torch.float16, use_safetensors=True); \
-print('Model downloaded successfully!'); \
-"
-
 # Copy application code
 COPY . .
+
+# Create volume mount point for model files
+RUN mkdir -p /runpod-volume
 
 # Set environment variables
 ENV PYTHONPATH=/app

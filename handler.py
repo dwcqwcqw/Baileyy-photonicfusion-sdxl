@@ -35,14 +35,31 @@ def load_model():
     
     print(f"Using device: {device}")
     
+    # Define model paths (local volume path first, then fallback to HF Hub)
+    local_model_path = "/runpod-volume/photonicfusion-sdxl"
+    hf_model_name = "Baileyy/photonicfusion-sdxl"
+    
     try:
-        # Load from Hugging Face Hub
-        pipeline = StableDiffusionXLPipeline.from_pretrained(
-            "Baileyy/photonicfusion-sdxl",
-            torch_dtype=torch_dtype,
-            use_safetensors=True,
-            device_map="auto" if device == "cuda" else None
-        )
+        # Try loading from local volume first
+        if os.path.exists(local_model_path):
+            print(f"📁 Loading model from local volume: {local_model_path}")
+            pipeline = StableDiffusionXLPipeline.from_pretrained(
+                local_model_path,
+                torch_dtype=torch_dtype,
+                use_safetensors=True,
+                device_map="auto" if device == "cuda" else None,
+                local_files_only=True
+            )
+            print("✅ Model loaded from local volume")
+        else:
+            print(f"📦 Local volume not found, loading from Hugging Face Hub: {hf_model_name}")
+            pipeline = StableDiffusionXLPipeline.from_pretrained(
+                hf_model_name,
+                torch_dtype=torch_dtype,
+                use_safetensors=True,
+                device_map="auto" if device == "cuda" else None
+            )
+            print("✅ Model loaded from Hugging Face Hub")
         
         # Move to device if not using device_map
         if device == "cuda" and pipeline.device != torch.device("cuda"):

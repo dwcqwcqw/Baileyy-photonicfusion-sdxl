@@ -1,9 +1,10 @@
 {
   "name": "photonicfusion-sdxl",
-  "description": "PhotonicFusion SDXL image generation using diffusers",
+  "description": "PhotonicFusion SDXL image generation using diffusers with local volume",
   "image": "photonicfusion-sdxl:latest",
   "env": {
     "MODEL_NAME": "Baileyy/photonicfusion-sdxl",
+    "LOCAL_MODEL_PATH": "/runpod-volume/photonicfusion-sdxl",
     "TORCH_CUDA_ARCH_LIST": "6.0 6.1 7.0 7.5 8.0 8.6+PTX",
     "PYTHONPATH": "/app"
   },
@@ -15,10 +16,10 @@
     "type": "NVIDIA_RTX_A4000"
   },
   "volume": {
-    "name": "model-cache",
-    "mount_path": "/root/.cache"
+    "name": "photonicfusion-models",
+    "mount_path": "/runpod-volume"
   },
-  "container_disk_in_gb": 50,
+  "container_disk_in_gb": 20,
   "min_workers": 0,
   "max_workers": 3,
   "idle_timeout": 5,
