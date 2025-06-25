@@ -1,6 +1,6 @@
 {
   "_class_name": "StableDiffusionXLPipeline",
-  "_diffusers_version": "0.34.0",
+  "_diffusers_version": "0.34.1",
   "scheduler": [
     "diffusers",
     "EulerDiscreteScheduler"
@@ -28,5 +28,6 @@
   "vae": [
     "diffusers",
     "AutoencoderKL"
-  ]
+  ],
+  "_cache_buster": "pNAXLklG"
 }
