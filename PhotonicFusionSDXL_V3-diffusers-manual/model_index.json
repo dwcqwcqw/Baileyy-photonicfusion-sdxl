@@ -5,12 +5,10 @@
     "transformers",
     "CLIPImageProcessor"
   ],
-  "force_zeros_for_empty_prompt": true,
   "image_encoder": [
     "transformers",
-    "CLIPVisionModelWithProjection"
+    "CLIPVisionModel"
   ],
-  "requires_aesthetics_score": false,
   "scheduler": [
     "diffusers",
     "EulerDiscreteScheduler"
